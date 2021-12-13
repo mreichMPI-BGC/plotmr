@@ -1,0 +1,26 @@
+Package: plotmr
+Title: Render rasterstacks into Animations in various ways
+Version: 0.0.0.9000
+Authors@R: 
+    person("Markus", "Reichstein", , "mreichstein@bgc-jena.mpg.de", 
+    role = c("aut", "cre"), comment = c(ORCID = "0000-0001-5736-1112"))
+Description: 
+    The package allows rendering rasterstacks (i.e. 3D data cube) into animations 
+    of coloured surfaces. Was intended for animations of global variables like
+    carbon cycle at ~0.5deg, but eventually is more general. Heavily depends
+    on rgl, rayshader, raster, and can almost be considered a 
+    convenience wrapper.
+License: `use_mit_license()`
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.1
+Depends: 
+    av,
+    fields,
+    gifski,
+    glue,
+    magick,
+    png,
+    R (>= 2.10),
+    sf
+LazyData: true
