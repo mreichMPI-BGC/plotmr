@@ -13,5 +13,6 @@ called for the side effect of the mp4 created
 Little demo function to create an animation of a wave
 }
 \examples{
+## Make sure you have the right palette() in place
 wavesAnim()
 }

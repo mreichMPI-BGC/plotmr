@@ -11,7 +11,7 @@ brick2movie(
   file = NULL,
   renderOcean = FALSE,
   renderSphere = FALSE,
-  useRayShade4Sphere = TRUE,
+  useRayShade4Sphere = FALSE,
   renderFakeSphere = FALSE,
   sphereExtFac = 0.2,
   renderCountries = FALSE,
@@ -24,12 +24,12 @@ brick2movie(
   col4NA = "white",
   elevat4NA = 0,
   oceanCol = "paleturquoise",
-  nSubSteps = 2,
+  nSubSteps = 1,
   rewindLoop = F,
   loop = 0,
   append1st = TRUE,
   outPrefix = "Animation",
-  outFolder = "./",
+  outFolder = tempdir(),
   framerate = 8,
   titles = NULL,
   justReRenderVideo = FALSE,
@@ -64,7 +64,7 @@ brick2movie(
 
 \item{renderFakeSphere}{Should the rayshader flat image just wrapped around the sphere without elevation effects. Not recommended. Default: FALSE}
 
-\item{sphereExtFac}{Indicates how prounouned the elevation should be. 0 = no elevation effect, 1 = range of elevations is radius of the sphere. Default: 0.2}
+\item{sphereExtFac}{Indicates how pronouned the elevation should be. 0 = no elevation effect, 1 = range of elevations is radius of the sphere. Default: 0.2}
 
 \item{renderCountries}{Should the country borders be rendered? Default: FALSE}
 
@@ -96,7 +96,7 @@ brick2movie(
 
 \item{outPrefix}{Name of the subfolder and prefix of output file name. Default: "Animation"}
 
-\item{outFolder}{Folder where results are written. Default: "./"}
+\item{outFolder}{Folder where results are written. Default: tempdir()}
 
 \item{framerate}{Video framerate. Default: 8}
 
@@ -134,4 +134,26 @@ Takes a rasterstack or a path to a NetCDF file and generates 3D vizualisations f
 offering a couple of options (e.g. flat or spherical viz; interpolation between layers).
 The values can be either represented as colors \strong{and} height, or the height can be
 specified by a separate (static) raster.
+}
+\examples{
+## Create pngs for animation of maps on a sphere
+## Open an rgl window with defined size first
+rgl::open3d(windowRect = 50 + c(0,0,1920,1080))
+
+## Just a single frame br[[6]] for brevity (br is a brick with 12 layers)
+## Simple sphere without elevation model and ocean
+brick2movie(br[[6]], eleRast = NULL, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=T, pal=rev(pal_MR$divViriMagma))
+
+## Sphere with elevation model and ocean
+brick2movie(br[[6]], eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=T, renderOcean=T, pal=rev(pal_MR$divViriMagma))
+
+## Same but now a flat projection
+brick2movie(br[[6]], eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=F, renderOcean=T, pal=rev(pal_MR$divViriMagma))
+
+## Now an animation with interpolation and 10 rounds and include country borders
+## This creates 480 frames ==> takes a bit of time
+brick2movie(br, eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = T, renderSphere=T, renderOcean=T, pal=rev(pal_MR$divViriMagma), renderCountries = T, thetaStartEnd = c(0,360), nSubSteps = 4, nRounds = 10)
+
+## The same but flat ==> just change rendersphere to 'F'
+brick2movie(br, eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = T, renderSphere=F, renderOcean=T, pal=rev(pal_MR$divViriMagma), renderCountries = T, thetaStartEnd = c(0,360), nSubSteps = 4, nRounds = 10)
 }

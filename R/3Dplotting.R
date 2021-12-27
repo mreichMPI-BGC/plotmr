@@ -59,6 +59,10 @@ values2rgb  <- function(values, pal=palette(), valRange=range(values, na.rm = TR
 #' rs_surface(elmat=volcano, coloring=volcano, pal=terrain.colors(50), zscale=5)
 #' ## Change e.g. coloring, so that it reflects the difference from the mean height
 #' rs_surface(elmat=volcano, coloring=abs(volcano - mean(volcano)), pal=pal_MR$divTurbo, zscale=5)
+#' ## Coloring now to reflect the slope
+#' gg <- imager::imgradient(volcano %>% `dim<-`(c(dim(.), 1,1)))
+#' volcanoGradient <- sqrt(as.matrix(gg[[1]])^2+as.matrix(gg[[2]])^2)
+#' rs_surface(elmat=volcano, coloring=volcanoGradient, pal=pal_MR$divViriMagma, zscale=5)
 rs_surface  <- function(elmat = volcano, coloring=volcano, img_overlay1=NULL, img_overlay2=NULL, water = FALSE,
                         wateralpha=0.5, alpha_over=0.75,
                         texture="bw", zscale=250, shadowintens=0.8, shadowReachFactor=1, windowsize=c(1920, 1080), zoom=0.5,
@@ -85,26 +89,7 @@ rs_surface  <- function(elmat = volcano, coloring=volcano, img_overlay1=NULL, im
   invisible(surface)
 }
 
-#' Title
-#'
-#' @return
-#'
-#'
-#' @examples
-globalDEM <- function() {
-  dem <-
-    raster(
-      "M:/data/DataStructureMDI/DATA/grid/Global/0d50_static/ETOPO/ETOPO1/Data/ETOPO1.halfdegree.nc"
-    )
-  altitudeInclIce  <-
-    raster(
-      "M:/data/DataStructureMDI/DATA/grid/Global/0d50_static/Worldclim/v1_4/Data/altitude.nc"
-    )
 
-  dem[!is.na(altitudeInclIce)]  <-  altitudeInclIce[!is.na(altitudeInclIce)]
-  dem
-
-}
 
 #' Render a rasterStack into 3D rgl png images and animiations
 #'
@@ -120,7 +105,7 @@ globalDEM <- function() {
 #' @param renderSphere Should the data set be rendered as a sphere? Default: FALSE
 #' @param useRayShade4Sphere Should the rayshader flat image (e.g. including shadows) be used as texture for the spherical viz? Default: TRUE
 #' @param renderFakeSphere Should the rayshader flat image just wrapped around the sphere without elevation effects. Not recommended. Default: FALSE
-#' @param sphereExtFac Indicates how prounouned the elevation should be. 0 = no elevation effect, 1 = range of elevations is radius of the sphere. Default: 0.2
+#' @param sphereExtFac Indicates how pronouned the elevation should be. 0 = no elevation effect, 1 = range of elevations is radius of the sphere. Default: 0.2
 #' @param renderCountries Should the country borders be rendered? Default: FALSE
 #' @param minVal Set manually the minimum value in the brick for color and elevation scaling. If not set, will be derived from data, but it seems brick need to be in memory then!
 #' @param maxVal Set manually the maximum value in the brick for color and elevation scaling. If not set, will be derived from data, but it seems brick need to be in memory then!
@@ -136,7 +121,7 @@ globalDEM <- function() {
 #' @param loop How many loops should be rendered in the animation. Default: 0
 #' @param append1st Should the first layer be appended? Helpful to make a smooth seasonal cycle. Default: TRUE
 #' @param outPrefix Name of the subfolder and prefix of output file name. Default: "Animation"
-#' @param outFolder Folder where results are written. Default: "./"
+#' @param outFolder Folder where results are written. Default: tempdir()
 #' @param framerate Video framerate. Default: 8
 #' @param titles Vector of title of length number of layers: Default: Null
 #' @param justReRenderVideo Should just the video be (re-)rendered (e.g. with different framerate; then pngs must be there already). Default: FALSE
@@ -155,7 +140,28 @@ globalDEM <- function() {
 #' @return Returns an array of generated files (so that can used in pipe with \code{renderVideos})
 #' @export
 #'
-#' @examples
+#' @examples ## Create pngs for animation of maps on a sphere
+#' ## Open an rgl window with defined size first
+#' rgl::open3d(windowRect = 50 + c(0,0,1920,1080))
+#'
+#' ## Just a single frame br[[6]] for brevity (br is a brick with 12 layers)
+#' ## Simple sphere without elevation model and ocean
+#' brick2movie(br[[6]], eleRast = NULL, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=T, pal=rev(pal_MR$divViriMagma))
+#'
+#' ## Sphere with elevation model and ocean
+#' brick2movie(br[[6]], eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=T, renderOcean=T, pal=rev(pal_MR$divViriMagma))
+#'
+#' ## Same but now a flat projection
+#' brick2movie(br[[6]], eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=F, renderOcean=T, pal=rev(pal_MR$divViriMagma))
+#'
+#' ## Now an animation with interpolation and 10 rounds and include country borders
+#' ## This creates 480 frames ==> takes a bit of time
+#' brick2movie(br, eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = T, renderSphere=T, renderOcean=T, pal=rev(pal_MR$divViriMagma), renderCountries = T, thetaStartEnd = c(0,360), nSubSteps = 4, nRounds = 10)
+#'
+#' ## The same but flat ==> just change rendersphere to 'F'
+#' brick2movie(br, eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = T, renderSphere=F, renderOcean=T, pal=rev(pal_MR$divViriMagma), renderCountries = T, thetaStartEnd = c(0,360), nSubSteps = 4, nRounds = 10)
+
+
 brick2movie <-
   function(brick = br,
            eleRast = globalDEM0.5deg,
@@ -164,7 +170,7 @@ brick2movie <-
 
            renderOcean = FALSE,
            renderSphere = FALSE,
-           useRayShade4Sphere = TRUE,
+           useRayShade4Sphere = FALSE,
            renderFakeSphere = FALSE,
            sphereExtFac = 0.2,
            renderCountries = FALSE,
@@ -178,12 +184,12 @@ brick2movie <-
            elevat4NA = 0.0,
            oceanCol = "paleturquoise",
 
-           nSubSteps = 2,
+           nSubSteps = 1,
            rewindLoop = F,
            loop = 0,
            append1st = TRUE,
            outPrefix = "Animation",
-           outFolder = "./",
+           outFolder = tempdir(),
            framerate = 8,
            titles = NULL,
            justReRenderVideo = FALSE,
@@ -525,7 +531,7 @@ brick2movie <-
 #' @return mp4 filename
 #' @export
 #'
-#' @examples
+#' @examples brick2movie(br, eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=T, renderOcean=T, pal=rev(pal_MR$divViriMagma), renderCountries = T, thetaStartEnd = c(0,360), nSubSteps = 2, nRounds = 10) %>% renderVideos()
 renderVideos <- function(files, rewindLoop=F, loop=0, framerate=16, makegif=FALSE, gifShrinkage=4, ...) {
   dir <- dirname(files[1])
   if (rewindLoop)
@@ -553,7 +559,8 @@ renderVideos <- function(files, rewindLoop=F, loop=0, framerate=16, makegif=FALS
 #' @return Called for the side effect
 #' @export
 #'
-#' @examples testAllRenderOptions
+#' @examples ## Make sure you have the right palette() in place
+#'  testAllRenderOptions()
 testAllRenderOptions <- function(br = br) {
 
   #br <- brick("D:/markusr/_FLUXCOM/resample/GPP_MTE_2003.nc.0720.0360.0012.nc") %>% readAll()
@@ -582,7 +589,8 @@ testAllRenderOptions <- function(br = br) {
 #' @return called for the side effect of the mp4 created
 #' @export
 #'
-#' @examples wavesAnim()
+#' @examples ## Make sure you have the right palette() in place
+#' wavesAnim()
 wavesAnim <- function() {
   dampedWave <- function(phase=0, xVec=seq(0,1,length.out = 100)*2*pi*10) {
     y <- cos(xVec+phase)*1/(xVec+2)
@@ -627,7 +635,7 @@ decorate_png <- function(file=NULL, title="", caption="", size=60, legend_file=N
 #' @param mp4file
 #' @param vfilter
 #'
-#' @return
+#' @return called for the side effect
 #'
 #'
 #' @examples

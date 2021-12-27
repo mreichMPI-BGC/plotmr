@@ -10,7 +10,7 @@ mp4_to_gif(mp4file, vfilter = "scale=240:-1:flags=lanczos")
 \item{vfilter}{}
 }
 \value{
-
+called for the side effect
 }
 \description{
 Converts mp4 to gif

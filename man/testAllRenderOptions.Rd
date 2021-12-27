@@ -13,5 +13,6 @@ Called for the side effect
 Sphere or not sphere, ocean or not etc.
 }
 \examples{
-testAllRenderOptions
+## Make sure you have the right palette() in place
+ testAllRenderOptions()
 }

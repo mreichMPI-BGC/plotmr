@@ -33,3 +33,6 @@ mp4 filename
 \description{
 Renders mp4 and gif videos from array of image files
 }
+\examples{
+brick2movie(br, eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=T, renderOcean=T, pal=rev(pal_MR$divViriMagma), renderCountries = T, thetaStartEnd = c(0,360), nSubSteps = 2, nRounds = 10) \%>\% renderVideos()
+}
