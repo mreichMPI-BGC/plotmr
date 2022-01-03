@@ -1,0 +1,213 @@
+---
+title: "plotmr-vignette"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{plotmr-vignette}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r, setup}
+library(plotmr)
+library(rgl)
+knitr::knit_hooks$set(webgl = hook_webgl)
+
+```
+
+```{r, Blue_Marble, webgl=TRUE}
+sphereMarble <- function(month) {
+ m <- str_pad(month,2, pad='0')
+brick2movie(br[[6]] %>% raster::disaggregate(1) , eleRast = globalDEM0.5deg %>% disaggregate(1), gaussianSmoothSigma = 1, renderVideo = F, renderSphere=T, renderOcean = F, renderCountries = T, pal=rev(pal_MR$divViriMagma), phiStartEnd = c(30,30), thetaStartEnd = -c((month-1)/12*360,(month-1+39/40)/12*360),nRounds = 40, elevat4NA = NA, oceanCol = "blue", over=glue::glue("D:/anim/BlueMarble/world.topo.bathy.2004{m}.3x5400x2700.png"), eleRastOnly4NA = F, outFolder = "D:/anim/BlueMarble/", outPrefix = "MarbleSphere2", cntStart = 40 * (month-1), renderLegend = F, titles = month.name[month], useOnlyOver = T)
+ 
+}
+plotmr:::goodSphereLights()
+purrr::walk(1:2, sphereMarble) ## To create the pngs
+
+imager::load.image("D:/anim/BlueMarble/MarbleSphere2/MarbleSphere2_00000.png") %>% plot()
+
+
+```
+```{r, ProjectedMap3D, webgl=TRUE}
+
+
+for (prj in c(projGlobal$NaturalEarth, projGlobal$InterGoodeHomo, projGlobal$Robinson)) {
+
+brick2movie(br[[6]] %>% aggregate(2) %>% terra::rast()  %>% terra::project(prj, mask=T) %>% raster(), eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=F, renderOcean = T, renderCountries = T, pal=rev(pal_MR$divViriMagma), phiStartEnd = c(50,50), elevat4NA = NA, title=paste("June GPP", prj )) %>%
+  magrittr::extract(1) %>% 
+  imager::load.image() %>% plot()
+}
+
+
+
+```
+
+```{r, CoronaDynamics from WHO, webgl=TRUE}
+plotCorona3D <- function() {
+  require(sf)
+  require(spData)
+  require(lubridate)
+  require(gapminder)
+  
+  r <- raster()
+  res(r)  <- 0.5
+  palette(pal_MR$divViriMagma[-(1:126)])
+  corona <- read_csv("https://covid19.who.int/WHO-COVID-19-global-data.csv")
+  corona %<>% mutate(year=year(Date_reported), month=month(Date_reported)) %>% 
+    group_by(Country_code, year, month) %>% summarise(across(.cols=where(is.numeric), .fns = mean)) %>%
+    ungroup() %>%
+    nest(data = -Country_code)
+  world %<>% left_join(gapminder %>% select(country, pop.G=pop) %>% group_by(country) %>% 
+                           summarise_all(last) %>% ungroup(), by=c("name_long"="country"))  %>% 
+      mutate(pop=coalesce(pop, pop.G)) %>% 
+      select(-pop.G)
+    
+   corona  <- left_join(world, corona, by = c("iso_a2"="Country_code")) %>%
+    filter(map_lgl(data, function(x) !is.null(x))) 
+
+  nMonths <- nrow(corona$data[[1]])
+  ras_stack <- map(1:nMonths, function(i) corona %>% mutate(dataExtr = map_dbl(data, ~ .x[[i, "New_cases"]]),
+                                                            logNewCasesPer100000=log10(10+dataExtr/pop*1e5)) %>%
+                                          rasterize(r, field="logNewCasesPer100000")) %>% stack()
+  brick2movie(ras_stack,  thetaStartEnd = c(0,0), outFolder = "D:/anim/Corona", eleRast = NULL, elevat4NA = 0.9,                outPrefix="NewCoronaCases", renderCountries = T, leg.tit = "log(10 + New Cases per day per 100000)", nSubSteps = 4,
+              titles = paste0(corona$data[[1]]$year,", ", month.name[corona$data[[1]]$month]))
+  
+  
+
+   # corona <- read_csv("https://covid19.who.int/WHO-COVID-19-global-data.csv")
+   # corona %<>% nest(data = -Country_code)
+   # 
+   # left_join(world, corona, by = c("iso_a2"="Country_code")) %>% filter(map_lgl(data, function(x) !is.null(x))) %>% mutate(dataExtr=map_dbl(data, ~.x[[600, 7]])) %>% mutate(dataExtrperPop=dataExtr/pop) %>%select(geom, dataExtrperPop) %>% rasterize(r, field="dataExtrperPop")# %>% brick2movie(outPrefix = "Corona")
+   # right_join(corona, world, by = c("Country_code"= "iso_a2")) %>% filter(map_lgl(data, function(x) !is.null(x))) %>% mutate(dataExtr=map_dbl(data, ~.x[[600, 7]])) %>% mutate(dataExtrperPop=dataExtr/pop) %>%select(geom, dataExtrperPop) %>% rasterize(r, field="dataExtrperPop")# %>% brick2movie(outPrefix = "Corona")
+   # 
+   # 
+   # right_join(world, by = c("Country_code" ="iso_a2")) %>% 
+   # filter(map_lgl(data, function(x) !is.null(x))) 
+   # 
+   #  corona %>% 
+   #  mutate(dataExtr = map_dbl(data, ~ .x[[600, 7]])) %>% 
+   #  mutate(logdataExtrperPop =  log(dataExtr / pop + 1e-6)) %>% select(geom, logdataExtrperPop) %>% 
+   #  rasterize(r, field="logdataExtrperPop") %T>% { plot(.[[10]]) } %>%
+   #  brick2movie(outPrefix = "Corona",  thetaStartEnd = c(0,0), outFolder = "D:/anim/Corona", outPrefix="NewCoronaCases")
+}
+
+files <- plotCorona3D()
+
+
+```
+```{r Corona_Germany}
+require(COVID19)
+require(giscoR)
+require(eurostat)
+require(raster)
+
+# pop3 <- get_eurostat("demo_r_pjangrp3")
+# pop3 %<>% filter(stringr::str_detect(geo, "^DE"), age=="TOTAL", time==as.Date("2019-01-01")) %>% 
+#   group_by(geo) %>%
+#   summarise(popCount=sum(values)) %>% 
+#   ungroup()
+
+germany_nuts3 <- gisco_get_nuts(nuts_level = 3, country = "Germany")
+covid <- covid19("DEU", level=3, verbose=F)
+
+dateTemplate <- expand.grid(list(date=seq(min(covid$date), max(covid$date), by="1 day"), key_nuts=unique(covid$key_nuts))) %>%
+  as_tibble()
+covid <- left_join(dateTemplate, covid, by=c("date", "key_nuts")) %>%
+  select(date, key_nuts, confirmed:people_vaccinated, population)
+
+covid <- germany_nuts3  %>% left_join(covid, by = c("NUTS_ID"= "key_nuts")) #%>%
+  #left_join(pop3, by = c("NUTS_ID"="geo"))
+
+
+
+covid %<>% filter(!(NUTS_ID %in% c("DE300","DEG0N"))) %>% group_by(NUTS_ID) %>% 
+  mutate(confirmed_filled=approx(date, confirmed, date)$y,
+         population=mean(population, na.rm=T)) %>%
+  ungroup()
+
+p <- ggplot(covid %>% filter(date == as.Date("2021-12-23"))) +
+    geom_sf(aes(fill=confirmed_filled/population, geometry=geometry)) +
+    labs(
+        title = "NUTS-3 levels",
+        subtitle = "Germany",
+        caption = gisco_attributions()
+    ) + scale_fill_viridis_c(option = "magma", end = 0.9)
+  print(p)
+  
+  r <- raster::rasterize(covid %>% filter(date == as.Date("2021-12-23")), raster(extent(covid), resolution=1/50), field="confirmed")
+plot(r)
+require(lubridate)
+#wks  <- seq(covid$date[1], last(covid$date), by="1 week")
+
+#alldays <- tibble(alldays=seq(covid$date[1], last(covid$date), by="1 day"))
+
+
+
+covid_weekly <- covid %>% as_tibble() %>%
+  mutate(weekGroup=cut(date, "2 week")) %>%
+  group_by(NUTS_ID, weekGroup) %>%
+  summarise(across(c(where(is.integer), confirmed_filled, population), max)) %>%
+  mutate(across(c(where(is.integer), confirmed_filled), ~c(NA, diff(.x)), .names = "diff_{.col}")) %>%
+  mutate(inzidenz = diff_confirmed_filled/population*1e5) %>%
+  ungroup() %>%
+  right_join(germany_nuts3, by="NUTS_ID") %>%
+  sf::st_as_sf()
+
+
+covid_brick <- map(unique(covid_weekly$weekGroup) %>% purrr::keep(~!is.na(.)), 
+                   ~raster::rasterize(covid_weekly %>% 
+                                        filter(weekGroup == .x) %T>% 
+                                        {print(as.Date(.x))}, 
+                                      raster(extent(covid_weekly), resolution=1/50),
+                                      field="inzidenz")
+                   ) %>% stack()
+names(covid_brick) <- unique(covid_weekly$weekGroup) %>% purrr::keep(~!is.na(.))
+
+over <- rayshader::generate_line_overlay(
+  sf::st_as_sf(germany_nuts3) %>% sf::st_cast("MULTILINESTRING"),
+  extent(germany_nuts3),height=386, width=457,
+  linewidth = 1
+)
+
+ brick2movie(covid_brick/2,  thetaStartEnd = c(0,0), outFolder = "D:/anim/Corona", eleRast = NULL, elevat4NA = -0.1, gaussianSmoothSigma = 1.5,   over2=over, outPrefix="GermanIncidence", renderCountries = F, leg.tit = "Cases per week per 100000", nSubSteps = 2, renderVideo = F, 
+             pal = pal_MR$divViriMagma, renderLegend = T, titles = unique(covid_weekly$weekGroup) %>% purrr::keep(~!is.na(.))
+              )
+ 
+
+```
+
+
+```{r Shade_Volcano}
+# Coloring now to reflect the slope
+ gg <- imager::imgradient(volcano %>% `dim<-`(c(dim(.), 1,1)))
+ volcanoGradient <- sqrt(as.matrix(gg[[1]])^2+as.matrix(gg[[2]])^2)
+ rs_surface(elmat=volcano, coloring=volcanoGradient, pal=pal_MR$divViriMagma, zscale=5)
+
+```
+
+
+```{r, MoonPlot, webgl=TRUE}
+clear3d(type="lights"); light3d()
+moon <- raster("D:/anim/Moon/lalt_topo_ver3.grd") %>% aggregate(8)
+files <- brick2movie(moon, eleRast = moon, gaussianSmoothSigma = 0, renderVideo = F, renderSphere=T, renderOcean = F, renderCountries = F, pal=terrain.colors(100), phiStartEnd = c(50,50), thetaStartEnd = c(180,180), elevat4NA = NA, renderLegend = T, caption = "Data from https://www.miz.nao.ac.jp/rise/sites/default/files/data/secondary/lalt_topo_ver3.grd", leg.tit = "relative km", title="Moon topography after Araki et al. (2009)")
+
+#imager::load.image(files[1]) %>% plot() %>% print()
+png::readPNG(files[1]) %>% grid::grid.raster() %>% print()
+
+```
+
+
+
+
+```{r, test-rgl, webgl=TRUE}
+x <- sort(rnorm(1000))
+y <- rnorm(1000)
+z <- rnorm(1000) + atan2(x,y)
+plot3d(x, y, z, col = rainbow(1000))
+```

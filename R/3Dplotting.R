@@ -75,15 +75,15 @@ rs_surface  <- function(elmat = volcano, coloring=volcano, img_overlay1=NULL, im
     add_shadow(ray_shade(elmat,zscale=zscale/shadowReachFactor),max_darken = 1-shadowintens) %>%
     add_overlay( coloring %>% values2rgb(valRange = valRange, pal=pal, ...), alphalayer = alpha_over)
   if (!is.null(img_overlay1))
-    surface %<>% add_overlay(img_overlay1, alphalayer = 0.6, alphamethod = "max")
+    surface %<>% add_overlay(img_overlay1, alphalayer = 1, alphamethod = "max")
   if (!is.null(img_overlay2))
     surface %<>% add_overlay(img_overlay2, alphalayer = 0.8, alphamethod = "max")
 
   if (plot) {
     rgl.clear()
     surface %T>%
-      plot_map() %T>%
-      plot_3d(zscale = zscale, heightmap = elmat, water=water, windowsize = windowsize, zoom = zoom, wateralpha = wateralpha, ...)
+      rayshader::plot_map() %T>%
+      rayshader::plot_3d(zscale = zscale, heightmap = elmat, water=water, windowsize = windowsize, zoom = zoom, wateralpha = wateralpha, ...)
 
   }
   invisible(surface)
@@ -97,10 +97,10 @@ rs_surface  <- function(elmat = volcano, coloring=volcano, img_overlay1=NULL, im
 #' offering a couple of options (e.g. flat or spherical viz; interpolation between layers).
 #' The values can be either represented as colors **and** height, or the height can be
 #' specified by a separate (static) raster.
+#'
 #' @param brick The rasterStack or brick to be visualized. Default: br brick in this package
 #' @param eleRast The raster to be used for elevation. Default: globalDEM0.5deg in this package
 #' @param eleRastOnly4NA Should the elevation raster only be used in case of NA in the \code{brick}? Default: TRUE
-#' @param file File to be used to create the brick. Needed and used only if brick is not set
 #' @param renderOcean Should the ocean be rendered (with a blue transparent)? Default: FALSE
 #' @param renderSphere Should the data set be rendered as a sphere? Default: FALSE
 #' @param useRayShade4Sphere Should the rayshader flat image (e.g. including shadows) be used as texture for the spherical viz? Default: TRUE
@@ -123,7 +123,7 @@ rs_surface  <- function(elmat = volcano, coloring=volcano, img_overlay1=NULL, im
 #' @param outPrefix Name of the subfolder and prefix of output file name. Default: "Animation"
 #' @param outFolder Folder where results are written. Default: tempdir()
 #' @param framerate Video framerate. Default: 8
-#' @param titles Vector of title of length number of layers: Default: Null
+#' @param titles Vector of title of length number of layers: Default: NULL
 #' @param justReRenderVideo Should just the video be (re-)rendered (e.g. with different framerate; then pngs must be there already). Default: FALSE
 #' @param renderVideo Should a video be rendered? Default: TRUE
 #' @param renderLegend Should a color legend be rendered= Default: TRUE
@@ -134,8 +134,11 @@ rs_surface  <- function(elmat = volcano, coloring=volcano, img_overlay1=NULL, im
 #' @param thetaStartEnd Start and end view horizontal angle. Default: C(0,0)
 #' @param phiStartEnd Start and end vertical angle: Default: \code{c(0, 0) + 45*!renderSphere}
 #' @param cntStart Can change where the file number counting starts. Default: 0
-#' @param over2 Can be another overlay image. Default:0
+#' @param over2 Can be another overlay image. Default: NULL
 #' @param ...  parameters passed on to other functions
+#' @param over An overlay to be plotted. Can be an filepath to an image, or SpatialPolygonDataFrame from wihch an overlay image is generated with \code{rayshader::generate_line_overlay}. Default: NULL
+#' @param useOnlyOver If TRUE only the overlay is used in the spherical rendering and br data ignored. Otherwise the texture is "somehow" combined with the plotcolor in \code{shade3d}. Default: FALSE
+#' @param pal The palette to be used. Vector of colors. Default: \code{palette()}
 #'
 #' @return Returns an array of generated files (so that can used in pipe with \code{renderVideos})
 #' @export
@@ -160,13 +163,23 @@ rs_surface  <- function(elmat = volcano, coloring=volcano, img_overlay1=NULL, im
 #'
 #' ## The same but flat ==> just change rendersphere to 'F'
 #' brick2movie(br, eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = T, renderSphere=F, renderOcean=T, pal=rev(pal_MR$divViriMagma), renderCountries = T, thetaStartEnd = c(0,360), nSubSteps = 4, nRounds = 10)
-
+#'
+#' ## Also works for regions
+#' africa  <- crop(br, extent(-23.906250,55.458984, -37.889187,39.364140) )
+#' ## Flat
+#' brick2movie(africa[[6]], eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=F, renderOcean = T, renderCountries = T, pal=rev(pal_MR$divViriMagma))
+#'
+#' ## Sphere
+#' brick2movie(africa[[6]] %>% raster::disaggregate(2), eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=T, renderOcean = T, renderCountries = T, pal=rev(pal_MR$divViriMagma))
+#'
+#' ## Or with projections
+#' prj <- projGlobal$Robinson
+#' brick2movie(br[[6]] %>% aggregate(2) %>% terra::rast()  %>% terra::project(prj, mask=T) %>% raster(), eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=F, renderOcean = T, renderCountries = T, pal=rev(pal_MR$divViriMagma), phiStartEnd = c(50,50), elevat4NA = NA, title=paste("June GPP", prj ))
 
 brick2movie <-
   function(brick = br,
            eleRast = globalDEM0.5deg,
            eleRastOnly4NA = TRUE,
-           file = NULL,
 
            renderOcean = FALSE,
            renderSphere = FALSE,
@@ -202,38 +215,70 @@ brick2movie <-
            thetaStartEnd = c(0, 0),
            phiStartEnd=c(0, 0) + 45*!renderSphere,
            cntStart = 0,
+           over = NULL,
+           useOnlyOver=FALSE,
            over2 = NULL,
            pal=palette(),
            ...) {
-    # ExampleCall to make
-    # br <- brick("D:/markusr/_FLUXCOM/resample/GPP_MTE_2003.nc.0720.0360.0012.nc") %>% readAll()
-    # brick2movie(br %>% flip("y") %>% reclassify(cbind(NA,NA)) %>% aggregate(1), renderSphere = T, outPrefix = "GPPSphereWithOcean", gaussianSmoothSigma = 2.0, sphereExtFac = 1.2, nRounds = 10, nSubSteps = 4, thetaStartEnd = c(360, 0), renderOcean = T, useRayShade4Sphere = F, col4NA = "grey60", elevat4NA = -1, renderCountries = T, renderVideo = T, eleRastOnly4NA = T, justReRenderVideo = F, framerate = 16)
 
     if (!justReRenderVideo) {
       if (is.null(brick))
-        br <- (brick(file)) #%>% flip(direction = "y")
+        br <- eleRast
       else
         br  <- brick
+
+      if (is.null(br)) br <- raster(vals=0.0)
       dimbr <- dim(br)
 
       dir.create(glue::glue("{outFolder}/{outPrefix}/"), showWarnings = F )
 
       eleRastClass <- class(eleRast)
       if (str_starts(eleRastClass, "Raster")) {
-        eleRast %<>% resample(br)
-        elmat  <-  eleRast %>%  raster_to_matrix()
-      }
+        #eleRast %<>% resample(br)
+       # eleRast %<>% projectRaster(to=br)
+       # elmat  <-  eleRast %>%  raster_to_matrix()
+        #elmat  <- eleRast %>% terra::rast() %>% terra::project(crs(br) %>% as.character(), mask=T) %>% raster() %>% raster_to_matrix()
+        elmat  <- eleRast %>% terra::rast() %>%   terra::project(crs(br) %>% as.character(), mask=T) %>%
+          terra::resample(terra::rast(br)) %>% raster()  %>% raster_to_matrix()
+
+              }
 
       #over <- generate_line_overlay(ne_coastline() %>% sf::st_as_sf(), extent(br), heightmap = elmat, linewidth = 0.5)
-      if (renderCountries)
-        over <- generate_line_overlay(
-           st_as_sf(rnaturalearth::countries110) %>% sf::st_cast("MULTILINESTRING"),
+      if (!is.null(over)) {
+        classOver <- class(over)[1]
+        if (classOver == "sf" || str_detect(classOver, fixed("Spatial", ignore_case = T))) {
+          over <- generate_line_overlay(
+            sf::st_as_sf(over) %>% sf::st_cast("MULTILINESTRING") %>% sf::st_transform(crs(br)),
+            extent(br),
+            heightmap = matrix(0, nrow=dimbr[2], ncol=dimbr[1]),
+            linewidth = 0.5 * sqrt(prod(dimbr[1:2])/360/720)
+          )
+
+        }
+
+        if (classOver %in% c("glue","character")) {
+          over <- imager::load.image(over) %>% imager::resize(size_x = dimbr[2], size_y=dimbr[1]) %>%
+            as.array() %>% drop() %>% aperm(c(2,1,3))
+        }
+
+      }
+
+      if (renderCountries) {
+        overCountries <- generate_line_overlay(
+           sf::st_as_sf(rnaturalearth::countries110) %>% sf::st_cast("MULTILINESTRING") %>% sf::st_transform(crs(br)),
           extent(br),
           heightmap = matrix(0, nrow=dimbr[2], ncol=dimbr[1]),
           linewidth = 0.5 * sqrt(prod(dimbr[1:2])/360/720)
         )
-      else
-        over <- NULL
+        if (is.null(over)) {
+          over <- overCountries
+        } else {
+          alphas <- overCountries[,,4]
+          for (i in 1:3) over[,,i] <- overCountries[,,i]*alphas + over[,,i]*(1-alphas)
+          if (dim(over)[3]==4) over[,,4] <- pmax(over[,,4], alphas)
+        }
+      }
+
 
 
 
@@ -252,14 +297,18 @@ brick2movie <-
             ~ smoothButReinsertNA(.x, gaussianSmoothSigma)) %>% stack
 
       if (minVal %>% is.null)
-        minVal <- minValue(br) %>% min
+        minVal <- minValue(br) %>% min(na.rm=T)
       if (maxVal %>% is.null)
-        maxVal <- maxValue(br) %>% max
+        maxVal <- maxValue(br) %>% max(na.rm=T)
       maxVal <- maxVal * maxFac
 
       if (renderLegend) {
         #ncol <- length(palette())
-        dummy <- scales::rescale_mid(c(minVal, maxVal), to=c(1, length(pal))) %>% as.integer()
+        if ((minVal/maxVal < 0.25))
+          dummy <- scales::rescale_mid(c(minVal, maxVal), to=c(1, length(pal))) %>% as.integer()
+        else
+          dummy <- scales::rescale(c(minVal, maxVal), to=c(1, length(pal))) %>% as.integer()
+         #dummy <- scales::rescale_mid(c(minVal, maxVal), to=c(1, length(pal))) %>% as.integer()
         png(glue::glue("{outFolder}/{outPrefix}/legend.png"),width=350, height=800)
         par(cex=2.6)
         print(fields::image.plot(legend.only = T, col=pal[seq(dummy[1], dummy[2])], legend.width = 3, zlim=c(minVal, maxVal),
@@ -426,10 +475,14 @@ brick2movie <-
                                                              raster((res1[,,2]), template=br),
                                                              raster((res1[,,3]), template=br  ))
             else {
-              if (renderCountries) tr <- 255*raster::stack(raster(over[,,1], template=br),
+              if (!is.null(over)) tr <- 255*raster::stack(raster(over[,,1], template=br),
                                                            raster(over[,,2], template=br),
                                                            raster(over[,,3], template=br)
-                                                           )
+              )
+              # if (!is.null(over2))  tr <- 255*raster::stack(raster(over2[,,1], template=br),
+              #                                               raster(over2[,,2], template=br),
+              #                                               raster(over2[,,3], template=br)
+              # )
               colrst <- raster(t(valOrig), template=br)#; colrst[is.na(colrst)]  <- -1
               qmCol <- quadmesh(colrst, na.rm=F)
             }
@@ -445,21 +498,22 @@ brick2movie <-
             y <-  cos((qm$vb[2,]-90)/180*pi) * 100*rho
             qms <- qm
             qms$vb[1,]  <- x; qms$vb[2,] <- y; qms$vb[3,] <- z
-            if (!rasterHasNA) qms  <- addNormals(qms)
+            if (!rasterHasNA) qms  <- rgl::addNormals(qms)
 
             # pal[scales::rescale_mid(values, c(1,ncol), valRange)]
 
-            clear3d()
-            clear3d(type="lights"); light3d()#0,23, specular="grey50", viewp=T)
-            if (useRayShade4Sphere) {
+            rgl::clear3d()
+            #clear3d(type="lights"); light3d()#0,23, specular="grey50", viewp=T)
+            if (useRayShade4Sphere | useOnlyOver) {
               # light3d(-45,-15, specular="white", viewp=T)
-              shade3d(qms, specular="black")
+              qms$material$color <- "white"
+              shade3d(qms, specular="grey30", shininess=80)
             }
             else {
               qms$colorValue  <- scales::rescale_mid(qmCol$vb[3,qmCol$ib], c(1,length(pal)), c(minVal, maxVal))
               plotColor <- pal[qms$colorValue]
               plotColor[is.na(plotColor)] <- col4NA
-              shade3d(qms, col = plotColor , specular="grey30", meshColor="legacy", shininess=80)
+              shade3d(qms, col = plotColor , specular="grey30", meshColor="legacy", shininess=30)
 
             }
             if (renderOcean) {
@@ -518,6 +572,7 @@ brick2movie <-
     invisible(files)
 
   }
+
 
 #' Renders mp4 and gif videos from array of image files
 #'
@@ -642,4 +697,17 @@ decorate_png <- function(file=NULL, title="", caption="", size=60, legend_file=N
 mp4_to_gif <- function(mp4file, vfilter="scale=240:-1:flags=lanczos") { # 240 is the width, -1 means keep aspect
   av::av_encode_video(mp4file, glue::glue("{mp4file}.gif"), vfilter = vfilter)
 
+}
+
+#' Add lights that make the sphere shine
+#'
+#' @return
+#'
+#'
+#' @examples
+goodSphereLights <- function() {
+  rgl::clear3d(type="lights")
+  rgl::light3d(45,15, specular="white", viewp=T)
+  rgl::light3d(45,-23, specular="black", viewp=T)
+  rgl::light3d(45,60, specular="black", viewp=T)
 }
