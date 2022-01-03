@@ -8,7 +8,6 @@ brick2movie(
   brick = br,
   eleRast = globalDEM0.5deg,
   eleRastOnly4NA = TRUE,
-  file = NULL,
   renderOcean = FALSE,
   renderSphere = FALSE,
   useRayShade4Sphere = FALSE,
@@ -42,6 +41,8 @@ brick2movie(
   thetaStartEnd = c(0, 0),
   phiStartEnd = c(0, 0) + 45 * !renderSphere,
   cntStart = 0,
+  over = NULL,
+  useOnlyOver = FALSE,
   over2 = NULL,
   pal = palette(),
   ...
@@ -53,8 +54,6 @@ brick2movie(
 \item{eleRast}{The raster to be used for elevation. Default: globalDEM0.5deg in this package}
 
 \item{eleRastOnly4NA}{Should the elevation raster only be used in case of NA in the \code{brick}? Default: TRUE}
-
-\item{file}{File to be used to create the brick. Needed and used only if brick is not set}
 
 \item{renderOcean}{Should the ocean be rendered (with a blue transparent)? Default: FALSE}
 
@@ -100,7 +99,7 @@ brick2movie(
 
 \item{framerate}{Video framerate. Default: 8}
 
-\item{titles}{Vector of title of length number of layers: Default: Null}
+\item{titles}{Vector of title of length number of layers: Default: NULL}
 
 \item{justReRenderVideo}{Should just the video be (re-)rendered (e.g. with different framerate; then pngs must be there already). Default: FALSE}
 
@@ -122,7 +121,13 @@ brick2movie(
 
 \item{cntStart}{Can change where the file number counting starts. Default: 0}
 
-\item{over2}{Can be another overlay image. Default:0}
+\item{over}{An overlay to be plotted. Can be an filepath to an image, or SpatialPolygonDataFrame from wihch an overlay image is generated with \code{rayshader::generate_line_overlay}. Default: NULL}
+
+\item{useOnlyOver}{If TRUE only the overlay is used in the spherical rendering and br data ignored. Otherwise the texture is "somehow" combined with the plotcolor in \code{shade3d}. Default: FALSE}
+
+\item{over2}{Can be another overlay image. Default: NULL}
+
+\item{pal}{The palette to be used. Vector of colors. Default: \code{palette()}}
 
 \item{...}{parameters passed on to other functions}
 }
@@ -156,4 +161,16 @@ brick2movie(br, eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo 
 
 ## The same but flat ==> just change rendersphere to 'F'
 brick2movie(br, eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = T, renderSphere=F, renderOcean=T, pal=rev(pal_MR$divViriMagma), renderCountries = T, thetaStartEnd = c(0,360), nSubSteps = 4, nRounds = 10)
+
+## Also works for regions
+africa  <- crop(br, extent(-23.906250,55.458984, -37.889187,39.364140) )
+## Flat
+brick2movie(africa[[6]], eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=F, renderOcean = T, renderCountries = T, pal=rev(pal_MR$divViriMagma))
+
+## Sphere
+brick2movie(africa[[6]] \%>\% raster::disaggregate(2), eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=T, renderOcean = T, renderCountries = T, pal=rev(pal_MR$divViriMagma))
+
+## Or with projections
+prj <- projGlobal$Robinson
+brick2movie(br[[6]] \%>\% aggregate(2) \%>\% terra::rast()  \%>\% terra::project(prj, mask=T) \%>\% raster(), eleRast = globalDEM0.5deg, gaussianSmoothSigma = 1, renderVideo = F, renderSphere=F, renderOcean = T, renderCountries = T, pal=rev(pal_MR$divViriMagma), phiStartEnd = c(50,50), elevat4NA = NA, title=paste("June GPP", prj ))
 }
