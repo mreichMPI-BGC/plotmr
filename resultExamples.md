@@ -1,6 +1,6 @@
 ## Some animations (mostly) of Earth System variables hopefully useful for educational purposes
 ### Created with the brick2movie function
-*Please cite as: Reichstein & Jung (2022) Animations of observation-based Earth System variables. https://github.com/mreichMPI-BGC/plotmr/edit/main/resultExamples.md*
+*Please cite as: Reichstein & Jung (2022) Animations of observation-based Earth System variables. https://github.com/mreichMPI-BGC/plotmr/blob/main/resultExamples.md*
 
 | Variable  | Still image example|  Further comments & animation URL | References to related data products |
 | ------------- | ------------- |  ------------- | ------------- |
